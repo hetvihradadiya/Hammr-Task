@@ -1,2 +1,29 @@
+# Dependencies
 node_modules/
+
+# Environment
 .env
+.env.*
+!.env.example
+
+# Next.js
+.next/
+out/
+
+# Backend
+dist/
+
+# Testing
+coverage/
+
+# Prisma
+prisma/generated/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
