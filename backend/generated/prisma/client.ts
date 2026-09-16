@@ -47,3 +47,8 @@ export { Prisma };
  *
  */
 export type User = Prisma.UserModel;
+/**
+ * Model TwoFactorAuth
+ *
+ */
+export type TwoFactorAuth = Prisma.TwoFactorAuthModel;

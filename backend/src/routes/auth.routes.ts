@@ -1,0 +1,39 @@
+import { Router } from 'express';
+import {
+  loginController,
+  logoutController,
+  meController,
+  registerController,
+  setupTwoFactorController,
+  verifyTwoFactorController,
+} from '../controllers/auth.controller.js';
+import { requireAuth } from '../middlewares/auth.middleware.js';
+import { authRateLimiter, sensitiveRateLimiter } from '../middlewares/rate-limit.middleware.js';
+import { validateBody } from '../middlewares/validate.middleware.js';
+import { loginSchema, registerSchema, twoFactorCodeSchema } from '../services/auth.schemas.js';
+
+const router = Router();
+
+router.post('/register', authRateLimiter, validateBody(registerSchema), registerController);
+
+router.post('/login', authRateLimiter, validateBody(loginSchema), loginController);
+
+router.post(
+  '/2fa/setup/verify',
+  sensitiveRateLimiter,
+  validateBody(twoFactorCodeSchema),
+  setupTwoFactorController,
+);
+
+router.post(
+  '/2fa/verify',
+  sensitiveRateLimiter,
+  validateBody(twoFactorCodeSchema),
+  verifyTwoFactorController,
+);
+
+router.get('/me', requireAuth, meController);
+
+router.post('/logout', logoutController);
+
+export default router;
