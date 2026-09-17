@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "typecheck": "npm run typecheck --workspace=backend && npm run typecheck --workspace=frontend",
     "test": "npm run test --workspace=backend && npm run test --workspace=frontend",
-"prepare": "node .husky/install.mjs"  },
+    "prepare": "node -e \"if (!process.env.CI && process.env.NODE_ENV !== 'production') require('child_process').execSync('husky', {stdio: 'inherit'})\""
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.10.0",
