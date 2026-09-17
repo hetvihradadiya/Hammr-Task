@@ -36,5 +36,11 @@
     "*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
+    "lucide-react": "^1.46.0",
+    "react-hook-form": "^7.88.0",
+    "zod": "^4.6.5"
   }
 }

@@ -3,6 +3,7 @@ import {
   loginController,
   logoutController,
   meController,
+  refreshController,
   registerController,
   setupTwoFactorController,
   verifyTwoFactorController,
@@ -17,6 +18,8 @@ const router = Router();
 router.post('/register', authRateLimiter, validateBody(registerSchema), registerController);
 
 router.post('/login', authRateLimiter, validateBody(loginSchema), loginController);
+
+router.post('/refresh', refreshController);
 
 router.post(
   '/2fa/setup/verify',
@@ -34,6 +37,6 @@ router.post(
 
 router.get('/me', requireAuth, meController);
 
-router.post('/logout', logoutController);
+router.post('/logout', requireAuth, logoutController);
 
 export default router;
