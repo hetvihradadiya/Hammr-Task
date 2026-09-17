@@ -7,16 +7,20 @@ import {
   setupSellerTwoFactor,
   verifySellerTwoFactor,
 } from '../services/auth.service.js';
+import {
+  createAccessToken,
+  createRefreshToken,
+  revokeAllUserTokens,
+  revokeToken,
+  rotateRefreshToken,
+} from '../services/token.service.js';
+import {
+  clearAuthCookies,
+  setAccessTokenCookie,
+  setRefreshTokenCookie,
+} from '../utils/auth-cookies.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
-
-const authCookieOptions = {
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? ('none' as const) : ('lax' as const),
-  maxAge: 24 * 60 * 60 * 1000,
-  path: '/',
-};
 
 const pendingCookieOptions = {
   httpOnly: true,
@@ -26,23 +30,29 @@ const pendingCookieOptions = {
   path: '/',
 };
 
-const clearCookieOptions = {
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? ('none' as const) : ('lax' as const),
-  path: '/',
+const clearPendingCookie = (res: Parameters<RequestHandler>[1]) => {
+  res.clearCookie('hammr_2fa_pending', pendingCookieOptions);
 };
 
-const setAuthCookie = (res: Parameters<RequestHandler>[1], token: string) => {
-  res.cookie('hammr_access_token', token, authCookieOptions);
+const setAuthenticationCookies = async (
+  res: Parameters<RequestHandler>[1],
+  user: { id: number; role: 'BUYER' | 'SELLER' },
+) => {
+  const [accessToken, refreshToken] = await Promise.all([
+    createAccessToken(user.id, user.role),
+    createRefreshToken(user.id, user.role),
+  ]);
+
+  setAccessTokenCookie(res, accessToken);
+  setRefreshTokenCookie(res, refreshToken);
 };
 
 export const registerController: RequestHandler = async (req, res, next) => {
   try {
     const result = await register(req.body);
 
-    if (result.token) {
-      setAuthCookie(res, result.token);
+    if (!result.requiresTwoFactorSetup) {
+      await setAuthenticationCookies(res, result.user);
     }
 
     if ('setupToken' in result) {
@@ -71,8 +81,8 @@ export const loginController: RequestHandler = async (req, res, next) => {
   try {
     const result = await login(req.body);
 
-    if (result.token) {
-      setAuthCookie(res, result.token);
+    if (result.user) {
+      await setAuthenticationCookies(res, result.user);
     }
 
     if (result.twoFactorToken) {
@@ -111,8 +121,8 @@ export const verifyTwoFactorController: RequestHandler = async (req, res, next) 
     }
 
     const result = await verifySellerTwoFactor(pendingToken, req.body.code);
-    res.clearCookie('hammr_2fa_pending', clearCookieOptions);
-    setAuthCookie(res, result.token);
+    clearPendingCookie(res);
+    await setAuthenticationCookies(res, result.user);
 
     res.status(200).json({
       status: 'success',
@@ -133,8 +143,8 @@ export const setupTwoFactorController: RequestHandler = async (req, res, next) =
     }
 
     const result = await setupSellerTwoFactor(setupToken, req.body.code);
-    res.clearCookie('hammr_2fa_pending', clearCookieOptions);
-    setAuthCookie(res, result.token);
+    clearPendingCookie(res);
+    await setAuthenticationCookies(res, result.user);
 
     res.status(200).json({
       status: 'success',
@@ -162,12 +172,37 @@ export const meController: RequestHandler = async (req, res, next) => {
   }
 };
 
-export const logoutController: RequestHandler = (_req, res) => {
-  res.clearCookie('hammr_access_token', clearCookieOptions);
-  res.clearCookie('hammr_2fa_pending', clearCookieOptions);
+export const refreshController: RequestHandler = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies?.hammr_refresh_token as string | undefined;
 
-  res.status(200).json({
-    status: 'success',
-    data: { message: 'Logged out successfully' },
-  });
+    if (!refreshToken) {
+      throw new AppError(401, 'Refresh token is required', 'REFRESH_TOKEN_REQUIRED');
+    }
+
+    const result = await rotateRefreshToken(refreshToken);
+    setAccessTokenCookie(res, result.accessToken);
+    setRefreshTokenCookie(res, result.refreshToken);
+
+    res.status(200).json({ status: 'success', message: 'Session refreshed' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logoutController: RequestHandler = async (req, res, next) => {
+  try {
+    const accessToken = req.cookies?.hammr_access_token as string | undefined;
+    const refreshToken = req.cookies?.hammr_refresh_token as string | undefined;
+
+    if (accessToken) await revokeToken(accessToken);
+    if (refreshToken) await revokeToken(refreshToken);
+    if (req.user?.sub) await revokeAllUserTokens(Number(req.user.sub));
+
+    clearAuthCookies(res);
+    clearPendingCookie(res);
+    res.status(200).json({ status: 'success', message: 'Logged out successfully' });
+  } catch (error) {
+    next(error);
+  }
 };

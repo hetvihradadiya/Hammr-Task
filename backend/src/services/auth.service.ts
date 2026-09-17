@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import * as speakeasy from 'speakeasy';
 import type { z } from 'zod';
@@ -5,7 +6,8 @@ import { prisma } from '../prisma.js';
 import { AppError } from '../utils/app-error.js';
 import { decryptSecret, encryptSecret } from '../utils/secret-encryption.js';
 import { comparePassword, hashPassword } from '../utils/password.js';
-import { signAuthToken, signTwoFactorPendingToken, verifyToken } from '../utils/token.js';
+import { verifyToken } from '../utils/token.js';
+import { createTwoFactorPendingToken, revokeToken } from './token.service.js';
 import type { loginSchema, registerSchema } from './auth.schemas.js';
 
 type RegisterInput = z.infer<typeof registerSchema>;
@@ -86,7 +88,6 @@ export const register = async (input: RegisterInput) => {
 
     return {
       user: publicUser(user),
-      token: signAuthToken({ sub: String(user.id), role: user.role }),
       requiresTwoFactorSetup: false,
     };
   }
@@ -118,10 +119,7 @@ export const register = async (input: RegisterInput) => {
   return {
     user: publicUser(user),
     requiresTwoFactorSetup: true,
-    setupToken: signTwoFactorPendingToken({
-      sub: String(user.id),
-      role: user.role,
-    }),
+    setupToken: await createTwoFactorPendingToken(user.id, user.role),
     qrCodeDataUrl: await QRCode.toDataURL(generated.otpauth_url),
     manualKey: generated.base32,
   };
@@ -142,10 +140,7 @@ export const login = async (input: LoginInput) => {
       const setup = await createSellerTwoFactor(user.id, user.email);
       return {
         requiresTwoFactorSetup: true,
-        setupToken: signTwoFactorPendingToken({
-          sub: String(user.id),
-          role: user.role,
-        }),
+        setupToken: await createTwoFactorPendingToken(user.id, user.role),
         ...setup,
       };
     }
@@ -155,26 +150,19 @@ export const login = async (input: LoginInput) => {
 
       return {
         requiresTwoFactorSetup: true,
-        setupToken: signTwoFactorPendingToken({
-          sub: String(user.id),
-          role: user.role,
-        }),
+        setupToken: await createTwoFactorPendingToken(user.id, user.role),
         ...setup,
       };
     }
 
     return {
       requiresTwoFactor: true,
-      twoFactorToken: signTwoFactorPendingToken({
-        sub: String(user.id),
-        role: user.role,
-      }),
+      twoFactorToken: await createTwoFactorPendingToken(user.id, user.role),
     };
   }
 
   return {
     user: publicUser(user),
-    token: signAuthToken({ sub: String(user.id), role: user.role }),
   };
 };
 
@@ -188,6 +176,19 @@ const verifySellerCode = async (token: string, code: string) => {
 
   if (payload.purpose !== '2fa_pending' || payload.role !== 'SELLER') {
     throw new AppError(401, 'Invalid 2FA session', 'INVALID_2FA_SESSION');
+  }
+
+  const pendingToken = await prisma.token.findFirst({
+    where: {
+      tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+      type: 'TWO_FACTOR_PENDING',
+      revokedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!pendingToken) {
+    throw new AppError(401, '2FA session is invalid or expired', 'INVALID_2FA_SESSION');
   }
 
   const userId = Number(payload.sub);
@@ -221,10 +222,9 @@ export const verifySellerTwoFactor = async (token: string, code: string) => {
     throw new AppError(400, 'Seller 2FA setup is not complete', 'TWO_FACTOR_SETUP_REQUIRED');
   }
 
-  return {
-    user: publicUser(user),
-    token: signAuthToken({ sub: String(user.id), role: user.role }),
-  };
+  await revokeToken(token);
+
+  return { user: publicUser(user) };
 };
 
 export const setupSellerTwoFactor = async (setupToken: string, code: string) => {
@@ -238,10 +238,9 @@ export const setupSellerTwoFactor = async (setupToken: string, code: string) => 
     },
   });
 
-  return {
-    user: publicUser(user),
-    token: signAuthToken({ sub: String(user.id), role: user.role }),
-  };
+  await revokeToken(setupToken);
+
+  return { user: publicUser(user) };
 };
 
 export const getCurrentUser = async (userId: number) => {
