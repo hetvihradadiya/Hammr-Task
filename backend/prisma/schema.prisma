@@ -24,7 +24,9 @@ model User {
   twoFactorAuth TwoFactorAuth?
   tokens        Token[]
 
-  auctions Auction[]
+  auctions               Auction[]
+  currentHighestAuctions Auction[] @relation("CurrentHighestBidder")
+  bids                   Bid[] // Fixed: Added missing back-relation
 
   @@index([email])
   @@index([role])
@@ -83,31 +85,66 @@ model Category {
   @@index([name])
 }
 
-model Auction {
-  id         Int @id @default(autoincrement())
-  sellerId   Int
-  categoryId Int
-
-  title       String
-  description String
-
-  startingPrice     Decimal  @db.Decimal(12, 2)
-  reservePrice      Decimal? @db.Decimal(12, 2)
-  currentHighestBid Decimal? @db.Decimal(12, 2)
-
-  scheduledStart DateTime
-  scheduledEnd   DateTime
-  status         AuctionStatus @default(SCHEDULED)
-
+model Bid {
+  id        Int      @id @default(autoincrement())
+  auctionId Int
+  bidderId  Int
+  amount    Decimal  @db.Decimal(12, 2)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  seller   User     @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  User    @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+
+  @@index([auctionId, createdAt])
+  @@index([bidderId, createdAt])
+}
+
+model Auction {
+  id                     Int           @id @default(autoincrement())
+  sellerId               Int
+  categoryId             Int
+  title                  String
+  description            String
+  startingPrice          Decimal       @db.Decimal(12, 2)
+  reservePrice           Decimal?      @db.Decimal(12, 2)
+  currentHighestBid      Decimal?      @db.Decimal(12, 2)
+  currentHighestBidderId Int?
+  scheduledStart         DateTime
+  scheduledEnd           DateTime
+  status                 AuctionStatus @default(SCHEDULED)
+  extensionSeconds       Int           @default(0)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  seller User @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
   category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  currentHighestBidder User? @relation("CurrentHighestBidder", fields: [currentHighestBidderId], references: [id], onDelete: SetNull)
+
+  images AuctionImage[]
+  bids   Bid[]
 
   @@index([sellerId])
   @@index([categoryId])
   @@index([status])
   @@index([scheduledStart])
   @@index([scheduledEnd])
+  @@index([currentHighestBidderId])
+}
+
+model AuctionImage {
+  id         Int      @id @default(autoincrement())
+  auctionId  Int
+  url        String
+  storageKey String
+  altText    String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId])
+  @@index([auctionId, sortOrder])
 }
