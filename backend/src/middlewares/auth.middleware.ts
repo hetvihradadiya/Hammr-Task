@@ -5,7 +5,7 @@ import { prisma } from '../prisma.js';
 import { AppError } from '../utils/app-error.js';
 import { verifyToken } from '../utils/token.js';
 
-export const requireAuth: RequestHandler = async (req, _res, next) => {
+export const authenticate: RequestHandler = async (req, _res, next) => {
   const cookieToken = req.cookies?.hammr_access_token as string | undefined;
 
   const authorization = req.headers.authorization;

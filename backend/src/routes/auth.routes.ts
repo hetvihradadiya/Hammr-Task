@@ -8,7 +8,7 @@ import {
   setupTwoFactorController,
   verifyTwoFactorController,
 } from '../controllers/auth.controller.js';
-import { requireAuth } from '../middlewares/auth.middleware.js';
+import { authenticate } from '../middlewares/auth.middleware.js';
 import { authRateLimiter, sensitiveRateLimiter } from '../middlewares/rate-limit.middleware.js';
 import { validateBody } from '../middlewares/validate.middleware.js';
 import { loginSchema, registerSchema, twoFactorCodeSchema } from '../services/auth.schemas.js';
@@ -35,8 +35,8 @@ router.post(
   verifyTwoFactorController,
 );
 
-router.get('/me', requireAuth, meController);
+router.get('/me', authenticate, meController);
 
-router.post('/logout', requireAuth, logoutController);
+router.post('/logout', authenticate, logoutController);
 
 export default router;
